@@ -143,10 +143,13 @@ privilege levels. +
 `Ceil(Log~2~NWorlds)` LSBs are used, other bits are reserved
 (read-only zeros).
 | `VSXLEN` | `vslwid` | HS | `???` | Virtualization replica register of
-the slwid register. In HS-mode this register can be programmed to set the
-effective WID of VU mode. In VS-mode accesses to `slwid` use the `vslwid`
-contents. `Ceil(Log~2~NWorlds)` LSBs are used, others are zero.
+the slwid register. WID value used in VU-mode. `Ceil(Log~2~NWorlds)`
+LSBs are used, others are zero.
 |===
+
+NOTE: Like for other VS replica registers, in HS-mode the `vslwid` register can
+be programmed to set the effective WID of VU mode. In VS-mode accesses to
+`slwid` reflect the `vslwid` contents.
 
 All RISC-V Worlds extensions support a maximum of `XLEN` worlds.
 
@@ -378,8 +381,8 @@ lower-privilege modes.
 If an unauthorized WID (per the `mwiddeleg` list) is written to `hlwid`, then
 the first attempt to fetch an instruction by VS-mode (or VU-mode if VS delegation
 is disabled) will take a precise exception indicating the software-check cause.
-Similarly, any attempt by HS-mode or U-mode to perform a hypervisor load or store
-"as VS/VU-mode" will be subject to the same `hwiddeleg` authorization check, meaning
+Any attempt to perform a hypervisor load or store instruction, or M-mode access with MPRV
+and MPV set, will be subject to the same `hwiddeleg` authorization check. This means
 that it may also take a precise exception (indicating the software-check cause).
 
 When this exception is raised, the `mtval` register is set to "illegal world
@@ -392,12 +395,17 @@ image::drawio/Shwiddeleg_Shlwid.svg[Shwiddeleg_Shlwid,align="center"]
 
 The Shwiddeleg extension requires the Smwdeleg/Shlwid/Sswid extensions and allows
 HS-mode to delegate to VS-mode the ability to allocate WIDs to VU-mode.
-To allow for a hypervisor to set or context switch the VS-mode `slwid` CSR, 
-the `vslwid` replica CSR is defined as part of the Shwiddeleg extension (see
-   <<hypervisor.adoc#_hypervisor_and_virtual_supervisor_csrs, VS CSRs in the Hypervisor
+The extension adds the `vslwid` replica CSR of `slwid` (see
+ <<hypervisor.adoc#_hypervisor_and_virtual_supervisor_csrs, VS CSRs in the Hypervisor
    chapter>>).
-In HS-mode this register can be programmed to set the effective WID of VU mode.
-In VS-mode it takes over all functions of the `slwid` CSR.
+The architectural state of `slwid` applies to U-mode, the architectural state of `vslwid`
+applies to VU-mode. The `vslwid` state can be programmed from M, HS, and VS mode and it
+sets the effective WID in VU mode. The Zicsr extension's instructions access `vslwid` instead
+of `slwid` when executing with V=1.
+
+NOTE: The Shwiddeleg extension is required because of the HU-bit. VS-mode could have
+programmed `slwid` with the WID in VU-mode, but then the WID for VU-mode while in HU-mode
+would need to be defined by another CSR.
 
 The Shwiddeleg extension adds the `hwiddeleg` HS-mode read-write CSR. The
 `hwiddeleg` register represents a set of WIDs as a bit vector with
@@ -419,8 +427,7 @@ WARL behavior will mask off any such bits. Similarly, if `mwiddeleg` is updated
 will be implicitly de-authorized in `hwiddeleg` also.
 
 If `hwiddeleg` is zero, the `vslwid` CSR is disabled, in which case
-any accesses to the `vslwid` CSR (direct from HS-mode, or indirect from the VS-mode
-`slwid` replica) raise an illegal instruction exception.
+any accesses to the `vslwid` CSR raise an illegal instruction exception.
 
 On reset, `hwiddeleg` is zero and hence `vslwid` is disabled.
 

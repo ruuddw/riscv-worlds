@@ -373,7 +373,7 @@ read-write `hlwid` CSR, which sets the WID used for VS-mode and, if not further 
 for VU-mode. The `hlwid` field is WARL, whose Ceil(Log~2~NWorlds) least-significant bits set
 the WID to be used by lower-privilege modes.
 
-If an unauthorized WID (per the `mwiddeleg` list) is written to `hlwid`, then
+If a WID is written to `hlwid` that is not delegated by the `mwiddeleg` list, then
 the first attempt to fetch an instruction by VS-mode (or VU-mode if VS delegation
 is disabled) will take a precise exception indicating the software-check cause.
 Any attempt to perform a hypervisor load or store instruction, or M-mode access with MPRV
@@ -384,7 +384,7 @@ exception (See <<exception-priority>> of Privileged Specification) and leads to 
 being raised to M-mode with trap value "illegal world fault (code=4)".
 
 NOTE: the trap may be delegated with the standard exception delegation mechanism, such that
-it could be handled at (V)S-mode directly.
+it could be handled at (H)S-mode directly.
 
 .Shwiddeleg/Shlwid extensions: Support for HS-mode to control the lower privilege mode's world.
 image::drawio/Shwiddeleg_Shlwid.svg[Shwiddeleg_Shlwid,align="center"]
@@ -413,12 +413,12 @@ The extension adds the `vslwid` replica CSR of `slwid` (see
 The architectural state of `slwid` applies to U-mode, the architectural state of `vslwid`
 applies to VU-mode. The `vslwid` state can be programmed from M, HS, and VS mode and it
 sets the effective WID in VU mode. The Zicsr extension's instructions access `vslwid` instead
-of `slwid` when executing with V=1.
+of `slwid` when executing in VS-mode.
 
 NOTE: The Shwiddeleg extension has been added because of the `hstatus` HU-bit. A hypervisor
 or operating system could alternatively reprogram the `slwid` to set the (V)U mode WID on
 context switches and before a hypervisor load/store instruction. However, in U-mode with V=0
-the WID for a hypervisor load/store instruction cannot be set first.
+the WID for a hypervisor load/store instruction cannot be set first by the HS-mode hypervisor.
 
 The Shwiddeleg extension adds the `hwiddeleg` HS-mode read-write CSR. The
 `hwiddeleg` register represents a set of WIDs as a bit vector with
@@ -433,7 +433,7 @@ WARL behavior will mask off any such bits. Similarly, if `mwiddeleg` is updated
 (either explicitly or implicitly), any WIDs that are de-authorized (set to zero)
 will be implicitly de-authorized in `hwiddeleg` also.
 
-If an unauthorized WID (per the `hwiddeleg` list) is written to `vslwid`, then
+If a WID is written to `vslwid` that is not delegated by the `hwiddeleg` list, then the
 the first attempt to fetch an instruction by VU-mode will take a precise exception indicating
 the software-check cause. Any attempt to perform with VU-mode privileges a hypervisor load or
 store instruction or M-mode access with MPRV and MPV set, will be subject to the same `hwiddeleg`
@@ -442,16 +442,25 @@ software-check cause and "illegal world fault (code=4)" trap value.
 The software-check exception has higher priority than any access-fault exception
 (See <<exception-priority>> of Privileged Specification).
 
-If `hwiddeleg` is zero, the `vslwid` CSR is disabled, in which case
-any accesses to the `vslwid` CSR raise an illegal instruction exception.
-Furthermore, if `mwiddeleg` is zero the Shlwid and Shwiddeleg (and Sswid) are disabled as well,
-in which case any accesses to the `hlwid`, `hwiddeleg`, `slwid` or `vslwid` CSR raises an
-illegal instruction exception.
+If `mwiddeleg` is zero the Shlwid and Shwiddeleg (and Sswid) extensions are disabled,
+in which case any accesses to the `hlwid`, `hwiddeleg`, `slwid` or `vslwid` CSR raise an
+illegal instruction exception. Otherwise, if `mwiddeleg` is non-zero and `hwiddeleg` is zero,
+the `vslwid` CSR is disabled and any accesses to the `vslwid` CSR raise an illegal
+instruction exception. If `mwiddeleg` and `hwiddeleg` are non-zero, the Shlwid and
+Shwiddeleg (and Sswid) are enabled.
+
+The standard HS-qualified rule for nested virtualization applies. When enabled
+(`mwiddeleg` is non-zero), VS-mode access to `slwid`, `hlwid`, and `hwiddeleg` raise
+a virtual instruction exception instead of an illegal instruction exception.
+
+NOTE: As HS-mode knows whether VS mode is executing nested-HS-mode or nested-VS-mode
+when handling the virtual instruction exception, the correct emulation for `slwid` or
+`vslwid` can be performed.
 
 On reset, `hwiddeleg` is zero and hence `vslwid` is disabled.
 
 NOTE: Like for `slwid` the value of `vslwid` after enabling or re-enabling Sswid is not defined.
-It is recommended to explicitly set the value after (re-)enabling.
+It is recommended to explicitly set the value directly after (re-)enabling.
 
 === Response to permission violations
 
